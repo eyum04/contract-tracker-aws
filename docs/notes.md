@@ -34,3 +34,20 @@ carry over when you upgrade, so nothing is lost.
 
 **Why:** Knowing the plan end date and the credit expiry date separately
 means I won't be surprised by the Free plan closing before my credits run out.
+
+
+## Phase 1: Networking
+
+### Step 1.1: VPC
+
+I created a custom VPC named `ct-vpc` in us-west-2 (Oregon) with the CIDR
+block 10.0.0.0/16. That gives me about 65,000 private IP addresses to divide
+into subnets. VPC ID: `vpc-0362e89976389ba8c`.
+
+My account also has a default VPC (172.31.0.0/16) that AWS creates in every
+region. I left it untouched. Its subnets are all public, so it isn't suited
+to a 3-tier design. I built my own VPC so I control the network layout.
+
+**Why:** I used "VPC only" instead of the "VPC and more" wizard so I create
+each piece (subnets, gateways, route tables) by hand and understand what
+each one does.
