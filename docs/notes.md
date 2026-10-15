@@ -51,3 +51,58 @@ to a 3-tier design. I built my own VPC so I control the network layout.
 **Why:** I used "VPC only" instead of the "VPC and more" wizard so I create
 each piece (subnets, gateways, route tables) by hand and understand what
 each one does.
+
+
+### Step 1.2–1.3: Subnets
+
+I split `ct-vpc` into six /24 subnets across two availability zones
+(us-west-2a and us-west-2b). I only used two AZs because that is the minimum
+for high availability, and more would add cost without benefit here.
+
+| Name | AZ | CIDR | Tier |
+|---|---|---|---|
+| ct-public-a | us-west-2a | 10.0.1.0/24 | Public |
+| ct-public-b | us-west-2b | 10.0.2.0/24 | Public |
+| ct-app-a | us-west-2a | 10.0.11.0/24 | App (private) |
+| ct-app-b | us-west-2b | 10.0.12.0/24 | App (private) |
+| ct-db-a | us-west-2a | 10.0.21.0/24 | Database (private) |
+| ct-db-b | us-west-2b | 10.0.22.0/24 | Database (private) |
+
+**Why:** Three tiers means the internet can only reach the load balancer. The
+app servers sit behind it, and the database sits behind the app servers with
+no internet route. Each layer limits the damage if the one in front is breached.
+
+Right after creation none of these subnets are "public". A subnet only
+becomes public once its route table sends internet traffic to an internet
+gateway. That is the next step.
+
+
+### Step 1.4: Internet gateway
+
+I created an internet gateway named `ct-igw` and attached it to `ct-vpc`.
+Creating and attaching are separate actions. Just attaching it does nothing
+by itself, because no subnet knows to send traffic to it yet. The default
+VPC has its own IGW, which I left alone.
+
+
+### Step 1.5: Public route table
+
+I created a route table named `ct-public-rt` with two routes:
+
+| Destination | Target |
+|---|---|
+| 10.0.0.0/16 | local |
+| 0.0.0.0/0 | ct-igw |
+
+I associated it with `ct-public-a` and `ct-public-b` only. A subnet is
+"public" because its route table sends internet traffic to an IGW, not
+because of its name.
+
+I did not edit the VPC's main route table. Every new subnet uses the main
+table by default, so it stays private. Adding the internet route there would
+have made every subnet public.
+
+**Why 0.0.0.0/0 works as a default route:** it matches every IPv4 address,
+but AWS always picks the most specific matching route. Traffic to an address
+inside 10.0.0.0/16 matches the local route, which is more specific, so it
+stays in the VPC. Everything else falls through to the IGW.
