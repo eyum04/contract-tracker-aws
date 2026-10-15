@@ -106,3 +106,23 @@ have made every subnet public.
 but AWS always picks the most specific matching route. Traffic to an address
 inside 10.0.0.0/16 matches the local route, which is more specific, so it
 stays in the VPC. Everything else falls through to the IGW.
+
+
+
+### Step 1.6: App and database route tables
+
+I created two more route tables so each tier has its own:
+
+| Route table | Subnets | Routes |
+|---|---|---|
+| ct-public-rt | ct-public-a, ct-public-b | local, 0.0.0.0/0 → ct-igw |
+| ct-app-rt | ct-app-a, ct-app-b | local only (for now) |
+| ct-db-rt | ct-db-a, ct-db-b | local only |
+
+All six subnets have explicit associations, so the main route table has no
+subnets on it.
+
+**Why:** The database tier has no route to the internet, so it can only talk
+to other resources inside the VPC. The app tier gets its own table now
+because in Phase 5 it will get a route to a NAT gateway for outbound-only
+internet access, and I don't want that route to affect the database tier.
