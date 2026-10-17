@@ -126,3 +126,16 @@ subnets on it.
 to other resources inside the VPC. The app tier gets its own table now
 because in Phase 5 it will get a route to a NAT gateway for outbound-only
 internet access, and I don't want that route to affect the database tier.
+
+
+### Step 1.7: S3 gateway endpoint
+
+I created a gateway endpoint for S3 (`ct-s3-endpoint`) and added it only to
+`ct-app-rt`. It adds a route that sends S3 traffic over the AWS network
+instead of the internet. Gateway endpoints are free, while the Interface
+type costs money, so I made sure to pick Gateway.
+
+**Why only the app tier:** the web servers are the only thing that talks to
+S3. The database and public tiers don't need that path, and not giving it to
+them follows least privilege. Without the endpoint, S3 traffic from the
+private subnets would have to go through a NAT gateway, which charges per GB.
