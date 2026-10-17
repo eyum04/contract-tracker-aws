@@ -139,3 +139,21 @@ type costs money, so I made sure to pick Gateway.
 S3. The database and public tiers don't need that path, and not giving it to
 them follows least privilege. Without the endpoint, S3 traffic from the
 private subnets would have to go through a NAT gateway, which charges per GB.
+
+
+### Phase 1 summary
+
+I verified the network with the VPC resource map:
+- Only `ct-public-rt` connects to the internet gateway, and it serves the
+  two public subnets.
+- `ct-app-rt` and `ct-db-rt` have no path to the internet.
+- `ct-app-rt` also connects to the S3 gateway endpoint, because the app
+  servers are the only tier that talks to S3.
+
+Nothing built in Phase 1 costs money. VPCs, subnets, route tables, internet
+gateways and gateway endpoints are free, so I can leave them running between
+sessions.
+
+**What I learned:** a subnet is public or private because of its route
+table, not its name. Subnet tiers, per-tier route tables and a gateway
+endpoint are all small decisions that follow least privilege.
