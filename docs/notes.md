@@ -157,3 +157,35 @@ sessions.
 **What I learned:** a subnet is public or private because of its route
 table, not its name. Subnet tiers, per-tier route tables and a gateway
 endpoint are all small decisions that follow least privilege.
+
+
+## Phase 2: Security groups
+
+I created three security groups in `ct-vpc` and chained them together so each
+tier only accepts traffic from the tier in front of it:
+
+| Security group | Inbound rule | Source |
+|---|---|---|
+| ct-alb-sg | HTTP (80) | 0.0.0.0/0 (the internet) |
+| ct-app-sg | TCP 8080 | ct-alb-sg |
+| ct-db-sg | PostgreSQL (5432) | ct-app-sg |
+
+**Why reference security groups instead of IP ranges:** a security group
+works as a stable name for a changing set of resources. Load balancer nodes
+and auto-scaled servers get new IP addresses all the time, but the rule
+"allow from ct-alb-sg" never needs updating. It is also tighter than allowing
+a whole subnet range.
+
+**Why the database only trusts the app tier:** the load balancer only
+forwards web requests and has no reason to talk to the database. Reaching my
+contract data means getting through the load balancer and then an app server.
+That is defense in depth.
+
+Security groups are stateful. If a request is allowed in, the response is
+allowed back out automatically, so I don't need rules for return traffic.
+Network ACLs are stateless and do need rules in both directions.
+
+I left the outbound rules at the default (allow all). The app servers need to
+reach Secrets Manager and S3 later. I can tighten them as an improvement.
+
+Security groups are free, so I left them in place between sessions.
