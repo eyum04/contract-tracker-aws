@@ -189,3 +189,40 @@ I left the outbound rules at the default (allow all). The app servers need to
 reach Secrets Manager and S3 later. I can tighten them as an improvement.
 
 Security groups are free, so I left them in place between sessions.
+
+
+
+## Phase 3: Hello world behind a load balancer
+
+Before adding a database and real code, I proved the path
+internet → load balancer → private servers works with a tiny page. If I had
+built everything at once and it failed, I wouldn't have known which layer
+was broken.
+
+**What I built:**
+- A launch template (`ct-app-lt`): Amazon Linux 2023, t3.micro, no key pair,
+  `ct-app-sg`, and user data that starts a small Python web server on port
+  8080 with a `/health` endpoint.
+- A target group (`ct-tg`): HTTP on port 8080, health check path `/health`.
+  I first created it with the TCP protocol by mistake. An ALB needs HTTP
+  target groups and the protocol can't be edited, so I deleted and recreated
+  it.
+- An Application Load Balancer (`ct-alb`): internet-facing in the two public
+  subnets, security group `ct-alb-sg`, listener HTTP:80 forwarding to `ct-tg`.
+- An Auto Scaling group (`ct-asg`): desired 2, min 2, max 4, in the private
+  app subnets, ELB health checks on, target tracking on 50% average CPU.
+
+**Why the ELB health check:** the default EC2 check only notices a dead
+machine. The ELB check requests `/health`, so a crashed or hung app on a
+running machine gets replaced.
+
+**Why the ports differ:** the visitor connects to the ALB on port 80. The ALB
+opens a separate connection to a server on port 8080, the only port
+`ct-app-sg` allows, and only from `ct-alb-sg`.
+
+**Proof it works:** requesting the ALB's DNS name repeatedly returned two
+different hostnames, `ip-10-0-11-x` and `ip-10-0-12-x`, one server in each
+AZ's app subnet. No server has a public IP.
+
+**Cost:** from this phase on, resources bill by the hour (the ALB and two
+t3.micro servers, about $0.05/hour together).
