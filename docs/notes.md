@@ -260,5 +260,24 @@ time, and the other keeps serving traffic, so the site stays up. This is
 immutable infrastructure: replace servers instead of editing them.
 
 
+### Step 4.3: S3 bucket
+
+I created the bucket `ct-contracts-eyoel-1234` in us-west-2 with ACLs
+disabled, Block all public access on, versioning enabled, default encryption
+SSE-S3, and the tag `Project = contract-tracker`. I added a bucket policy that
+denies any request not made over HTTPS.
+
+| Protection | Risk it addresses |
+|---|---|
+| Block all public access | Contracts becoming public by a mistake in a policy or ACL |
+| Versioning | Accidental overwrites or deletes, and some ransomware-style damage |
+| Encryption (SSE-S3) | Data readable if the underlying storage were ever exposed |
+| TLS-only policy | Files being read or written in plain text over the network |
+
+The TLS policy is an explicit Deny on `aws:SecureTransport = false`. It grants
+no access to anyone. It only removes an insecure way to use access that is
+granted elsewhere (the app's IAM role, in Step 4.5).
+
+
 
 
