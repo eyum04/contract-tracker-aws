@@ -379,3 +379,28 @@ existed, and the agent was still retrying. I terminated the instance, the Auto
 Scaling group launched a replacement, and the new one registered right away.
 Replacing a server instead of repairing it is the immutable-infrastructure
 idea in practice.
+
+
+### Step 5.4: Deploy the full app (in progress)
+
+I created version 3 of the launch template with the full app's user data
+(settings for the bucket, the database secret and the database endpoint) and
+started an instance refresh. The new servers in us-west-2b repeatedly failed
+the target group's health checks, so the Auto Scaling group kept replacing
+them. I stopped the loop by scaling the group to 0 and cancelling the refresh.
+
+I have not found the cause yet. Tomorrow I will launch one server, connect with
+Session Manager, and read `/var/log/user-data.log`, the `contracts` service
+status and its journal, and check `/etc/contracts.env` for typos.
+
+### End-of-session shutdown (first run)
+
+In order: scaled the Auto Scaling group to 0, deleted the NAT gateway and
+released its Elastic IP, deleted the load balancer, stopped the database
+temporarily. Kept the VPC, subnets, route tables, security groups, target
+group, launch template, S3 bucket and IAM role, which are free or nearly free.
+
+Starting the next session is the same list in reverse: start the database,
+create a new NAT gateway with a new Elastic IP, point `ct-app-rt` at it
+(the old route shows as Blackhole), recreate the load balancer with the same
+target group and security group, and set the Auto Scaling group back to 2.
