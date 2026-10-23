@@ -354,3 +354,28 @@ touch `ct-db-rt`, so the database tier still has no path to the internet.
 **Trade-off:** I use one NAT gateway in one AZ to save money. If that AZ
 went down, the servers in the other AZ would lose outbound internet access.
 Production uses one NAT gateway per AZ, each with its own route table.
+
+
+### Step 5.3: Session Manager and the outbound path
+
+I connected to a server with Session Manager. There is no SSH, no key pair and
+no open inbound port. The connection works because the instance role has
+`AmazonSSMManagedInstanceCore` and the server can reach the SSM service
+through the NAT gateway.
+
+- `curl https://checkip.amazonaws.com` printed the NAT gateway's Elastic IP,
+  not an address of the server. The server has no public IP, so this proves
+  outbound traffic goes server → NAT → internet gateway → internet.
+- `curl localhost:8080/health` returned `ok`.
+- `systemctl status hello` showed the service active and enabled. The
+  server built itself from the launch template's user data.
+- The service log showed `GET /health` requests every 30 seconds from
+  `10.0.1.x` and `10.0.2.x`, the load balancer's nodes in my two public
+  subnets.
+
+**Troubleshooting:** the first server I tried showed "Not connected" with an
+`i/o timeout` to the SSM endpoint. The error was logged before the NAT route
+existed, and the agent was still retrying. I terminated the instance, the Auto
+Scaling group launched a replacement, and the new one registered right away.
+Replacing a server instead of repairing it is the immutable-infrastructure
+idea in practice.
