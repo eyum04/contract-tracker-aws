@@ -280,4 +280,26 @@ granted elsewhere (the app's IAM role, in Step 4.5).
 
 
 
+### Step 4.4: PostgreSQL database
 
+I created an RDS PostgreSQL 16 instance (`ct-db`) on a `db.t4g.micro`, Single-AZ,
+with 20 GiB of storage, encryption on, 1-day automated backups, and
+Performance Insights and Enhanced Monitoring off to save cost. The initial
+database is named `contracts`.
+
+It lives in a DB subnet group (`ct-db-subnet-group`) that contains only the two
+database subnets. I created the subnet group by hand before the database,
+because the wizard's "create new" option can include every subnet in the VPC.
+Public access is off, and the security group is `ct-db-sg`, so only the app
+tier can reach it on port 5432.
+
+**Why the password is managed in Secrets Manager:** RDS creates the password
+and rotates it. It never appears in my code or in this repo, and the app
+fetches it at runtime using its IAM role.
+
+**Why public access is off:** the database holds contract data. It has no
+public IP, its subnets have no route to the internet, and its security group
+only trusts the app tier.
+
+**Cost trade-off:** Single-AZ keeps the cost down. In production I would use
+Multi-AZ so the database survives an AZ failure.
