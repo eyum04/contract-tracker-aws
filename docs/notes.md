@@ -303,3 +303,28 @@ only trusts the app tier.
 
 **Cost trade-off:** Single-AZ keeps the cost down. In production I would use
 Multi-AZ so the database survives an AZ failure.
+
+
+
+### Step 4.5: Least-privilege access for the role
+
+I added an inline policy named `ct-app-access` to `ct-app-role` that allows:
+- `s3:PutObject`, `s3:GetObject` and the two multipart-upload actions on
+  `contracts/*` in my one bucket only
+- `secretsmanager:GetSecretValue` on the one database secret only
+
+**Why this narrow:** if a server were ever compromised, the attacker could
+only touch the contract files and read one secret, not every bucket in the
+account. The policy is also a ready-made `aws_iam_role_policy` for the
+Terraform rebuild.
+
+**Exam link:** the secret is encrypted with the AWS-managed Secrets Manager
+key. If it used a customer managed KMS key, the role would also need
+`kms:Decrypt`, and the key policy would have to allow the role.
+
+### Phase 4 summary
+
+The servers now have an identity instead of stored keys, the bucket is locked
+down four ways (no public access, versioning, encryption, HTTPS only), and
+the database is private with its password managed by Secrets Manager. The app
+gets the minimum access it needs through its IAM role.
