@@ -226,3 +226,39 @@ AZ's app subnet. No server has a public IP.
 
 **Cost:** from this phase on, resources bill by the hour (the ALB and two
 t3.micro servers, about $0.05/hour together).
+
+
+
+
+## Phase 4: IAM role, S3 bucket and database
+
+### Step 4.1: Instance role
+
+I created an IAM role named `ct-app-role` for EC2 and attached the AWS managed
+policy `AmazonSSMManagedInstanceCore`. That lets me connect to the servers
+with Session Manager later, so I never need SSH or a key pair. AWS also
+created an instance profile with the same name, which is the wrapper that
+attaches a role to an EC2 instance. I will add a custom policy for S3 and
+Secrets Manager once the bucket and the secret exist.
+
+**Why a role instead of access keys:** access keys are long-term and can leak
+through code, logs, screenshots or Git commits. Role credentials are
+temporary, AWS rotates them automatically, and nothing is stored on the
+server, so there is nothing to steal from a file.
+
+### Step 4.2: Attach the role to the launch template
+
+I created version 2 of the launch template `ct-app-lt` (from version 1) with
+the IAM instance profile `ct-app-role`. I set the Auto Scaling group `ct-asg`
+to use the Latest version and started an instance refresh with a minimum
+healthy percentage of 50.
+
+**Why the servers don't get the role right away:** a launch template is only
+a recipe, so servers already running from version 1 do not change. Only new
+servers use version 2. The instance refresh replaces the old servers one at a
+time, and the other keeps serving traffic, so the site stays up. This is
+immutable infrastructure: replace servers instead of editing them.
+
+
+
+
