@@ -404,3 +404,20 @@ Starting the next session is the same list in reverse: start the database,
 create a new NAT gateway with a new Elastic IP, point `ct-app-rt` at it
 (the old route shows as Blackhole), recreate the load balancer with the same
 target group and security group, and set the Auto Scaling group back to 2.
+
+
+
+## Phase 5: Deploy the real app
+
+### 5.4 Debugging the crash loop
+- Symptom: new instances kept failing ELB health checks and were replaced in a loop (instance refresh looked "stuck").
+- Diagnosis path: ASG activity history -> user-data.log -> `systemctl status contracts` -> `journalctl -u contracts` -> import test showed `KeyError`.
+- Root cause: `NAME=value` format belongs ONLY in `/etc/contracts.env`. I deleted the `NAME=` prefixes while replacing placeholders, then re-added them everywhere, which also changed the Python keys to `os.environ["BUCKET_NAME=..."]`.
+- Fix: re-copied the clean script, replaced only the three `__PLACEHOLDER__` values in the env block, created launch template version 4, terminated the broken instance.
+- Lesson: change one thing at a time, and read the log before guessing. ELB health checks catch an app that is crashed even when EC2 status checks pass.
+- Lesson: suspending `ReplaceUnhealthy` stops the loop while debugging, but it also stops the ASG from replacing a manually terminated instance. Turn it back on once healthy.
+
+### 5.5 End-to-end test
+- Opened the ALB DNS name, added a contract with a PDF: row shows days left, file stored under `contracts/` in S3.
+- Verified object encryption: SSE-S3.
+- Path proven: ALB -> app (8080) -> Secrets Manager -> RDS (5432), and app -> S3 using the instance role (no access keys).
