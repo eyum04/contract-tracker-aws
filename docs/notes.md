@@ -328,3 +328,29 @@ The servers now have an identity instead of stored keys, the bucket is locked
 down four ways (no public access, versioning, encryption, HTTPS only), and
 the database is private with its password managed by Secrets Manager. The app
 gets the minimum access it needs through its IAM role.
+
+
+
+## Phase 5: NAT gateway and the full app
+
+### Step 5.1: NAT gateway
+
+I created a NAT gateway (`ct-nat-a`) in the public subnet `ct-public-a` with an
+Elastic IP. It lives in a public subnet because it needs a route to the
+internet gateway to do its job. Private servers can start outbound
+connections through it, but nothing from the internet can start a connection
+to them.
+
+**Cost:** about $0.045 per hour plus data, the biggest hourly charge in the
+project. I delete it at the end of every session and recreate it at the start
+of the next.
+
+### Step 5.2: Route the app subnets through it
+
+I added `0.0.0.0/0 → ct-nat-a` to `ct-app-rt`. It now has three routes: the
+local route, the S3 gateway endpoint, and the NAT default route. I did not
+touch `ct-db-rt`, so the database tier still has no path to the internet.
+
+**Trade-off:** I use one NAT gateway in one AZ to save money. If that AZ
+went down, the servers in the other AZ would lose outbound internet access.
+Production uses one NAT gateway per AZ, each with its own route table.
