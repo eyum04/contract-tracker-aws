@@ -406,6 +406,36 @@ create a new NAT gateway with a new Elastic IP, point `ct-app-rt` at it
 target group and security group, and set the Auto Scaling group back to 2.
 
 
+## Phase 6: Break it on purpose
+
+### Exercise 1: Terminate one server
+- Prediction: app keeps working via the other AZ; ASG replaces the server. Correct.
+- Observed: refreshes flipped between working and 504 for a while (the ALB kept sending ~half of requests to the dead target until health checks marked it unhealthy), then all requests worked.
+- Target went to `draining` after ~1 min. Default deregistration delay is 300 s; shorten it for stateless apps (idea: 30 s).
+- ASG launched a replacement in response to the unhealthy instance; replacement took ~5 min to Healthy.
+- Lesson: failover is not instant. Detection time = health check interval x unhealthy threshold. Two AZs mean no single failure takes the app down.
+
+### Exercise 2: Stop the app, not the server
+- `sudo systemctl stop contracts` on one instance.
+- EC2 status checks stayed 3/3 (they only test the VM). The ELB health check caught the dead app, target went draining, ASG launched a replacement.
+- Lesson: ASG health check type = ELB is what makes the app self-healing, not just the VM.
+
+### Exercise 3: Remove the ALB -> app SG rule (port 8080)
+- Suspended ReplaceUnhealthy first so the ASG would not kill healthy servers, then deleted the rule.
+- Result: both targets unhealthy, app returned 504 (packets silently dropped, ALB times out). Servers were never broken.
+- Restored the rule: both targets Healthy in ~5 min with no other changes.
+- Lesson: when targets are unhealthy but instances are fine, check the SG path first. SGs drop silently, they do not "reject".
+
+### Exercise 4: Reach the DB from outside
+- `nc -vz -w 5 <db-endpoint> 5432` from my laptop: "Operation timed out".
+- Blocked by three independent layers: no public access, no route to the IGW for the DB subnets, and the SG only allows ct-app-sg on 5432. Defense in depth.
+
+### Still to do next session
+- Exercise 5: remove s3:PutObject from the inline policy, upload a file, find the AccessDenied in CloudTrail.
+- Exercise 6: pin CPU (`yes > /dev/null &`) to watch target tracking scale out.
+- Exercise 7 (optional): Multi-AZ failover for RDS.
+
+
 
 ## Phase 5: Deploy the real app
 
@@ -421,3 +451,43 @@ target group and security group, and set the Auto Scaling group back to 2.
 - Opened the ALB DNS name, added a contract with a PDF: row shows days left, file stored under `contracts/` in S3.
 - Verified object encryption: SSE-S3.
 - Path proven: ALB -> app (8080) -> Secrets Manager -> RDS (5432), and app -> S3 using the instance role (no access keys).
+
+
+
+## Phase 6: Break it on purpose
+
+### Exercise 1: Terminate one server
+- Prediction: app keeps working via the other AZ; ASG replaces the server. Correct.
+- Observed: refreshes flipped between working and 504 for a while (the ALB kept sending ~half of requests to the dead target until health checks marked it unhealthy), then all requests worked.
+- Target went to `draining` after ~1 min. Default deregistration delay is 300 s; shorten it for stateless apps (idea: 30 s).
+- ASG launched a replacement in response to the unhealthy instance; replacement took ~5 min to Healthy.
+- Lesson: failover is not instant. Detection time = health check interval x unhealthy threshold. Two AZs mean no single failure takes the app down.
+
+### Exercise 2: Stop the app, not the server
+- `sudo systemctl stop contracts` on one instance.
+- EC2 status checks stayed 3/3 (they only test the VM). The ELB health check caught the dead app, target went draining, ASG launched a replacement.
+- Lesson: ASG health check type = ELB is what makes the app self-healing, not just the VM.
+
+### Exercise 3: Remove the ALB -> app SG rule (port 8080)
+- Suspended ReplaceUnhealthy first so the ASG would not kill healthy servers, then deleted the rule.
+- Result: both targets unhealthy, app returned 504 (packets silently dropped, ALB times out). Servers were never broken.
+- Restored the rule: both targets Healthy in ~5 min with no other changes.
+- Lesson: when targets are unhealthy but instances are fine, check the SG path first. SGs drop silently, they do not "reject".
+
+### Exercise 4: Reach the DB from outside
+- `nc -vz -w 5 <db-endpoint> 5432` from my laptop: "Operation timed out".
+- Blocked by three independent layers: no public access, no route to the IGW for the DB subnets, and the SG only allows ct-app-sg on 5432. Defense in depth.
+
+### Shutdown (end of session 2)
+- Order: ASG desired/min to 0 -> delete NAT -> release its EIP -> delete ALB (its 2 managed EIPs vanish on their own) -> stop DB -> verify.
+- Kept: VPC, subnets, route tables, IGW, S3 endpoint, SGs, ct-tg, ct-asg (at 0), launch template, S3 bucket, secret, IAM role.
+- Verified all clear: instances terminated, NAT deleted, no ALB, no EIPs, no volumes, DB stopped.
+- Reminder: stopped RDS restarts automatically after 7 days.
+- Next start-up: DB -> NAT (new EIP) -> repoint ct-app-rt route (old one shows Blackhole) -> ALB with same ct-tg + ct-alb-sg -> ASG back to 2.
+
+### Still to do next session
+- Exercise 5: remove s3:PutObject from the inline policy, upload a file, find the AccessDenied in CloudTrail.
+- Exercise 6: pin CPU (`yes > /dev/null &`) to watch target tracking scale out.
+- Exercise 7 (optional): Multi-AZ failover for RDS.
+
+
