@@ -86,6 +86,26 @@ The whole stack costs about **$0.12 per hour** while running (ALB, NAT gateway, 
 - HTTP only on port 80 (no custom domain or TLS certificate yet).
 - The S3 bucket uses SSE-S3 rather than a customer-managed KMS key.
 
+
+## What I learned
+
+**Debugging is the real skill.** My biggest outage was self-inflicted: while replacing placeholders in the server's startup script, I applied a `NAME=value` edit to the Python code as well as the config file, so the app crashed with a `KeyError` and the Auto Scaling group kept replacing servers in a loop. I found it by following the evidence in order (ASG activity -> startup log -> `systemctl status` -> `journalctl` -> an import test) instead of guessing. The fix was one line, and the lesson was to change one thing at a time and read the log first.
+
+**Health checks have layers.** EC2 status checks only test the VM; the load balancer's health check is what catches a dead app. My `/health` route deliberately skips the database so a DB outage doesn't remove every server at once, but that means "healthy" can hide a broken DB-backed page. It's a trade-off, not a bug.
+
+**Failover is not instant.** When I killed a server I saw about a minute of 504s, because the load balancer kept sending half the traffic to the dead target until enough health checks failed. Detection time is the check interval times the unhealthy threshold.
+
+**Security is layers, not one setting.** The database is unreachable from the internet for three independent reasons (no public IP, no route to the internet gateway, and a security group that only accepts the app tier). I confirmed it from my laptop with a connection that timed out.
+
+**Permissions fail loudly when they're least-privilege.** Removing `s3:PutObject` from the instance role returned a 500 and an `AccessDenied` in the app log naming the exact role session and action. I also learned the app uploads to S3 before writing the database row, so a failed upload leaves no orphan record.
+
+**Check your assumptions before testing.** I assumed the Auto Scaling group already had a CPU scaling policy. It didn't, so I found that out before running the load test, not after wondering why nothing scaled. Scale-out was fast (two servers added within minutes) and scale-in was deliberately slow (about 15 minutes) to avoid flapping.
+
+**Cost is a design constraint.** Hourly resources like the NAT gateway and load balancer made me design a repeatable shutdown and start-up routine, which is exactly why I'm rebuilding this in Terraform next.
+
+**Mistakes I made along the way** (and fixed): created a TCP target group when the ALB needs HTTP; nearly used an RDS wizard mode that would have put the database in the default VPC; left an auto-replacement setting suspended, which stopped the group from replacing a server I terminated by hand.
+
+
 ## Roadmap
 
 1. Rebuild the whole stack with Terraform (remote state).
