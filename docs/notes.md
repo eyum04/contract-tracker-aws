@@ -504,3 +504,12 @@ target group and security group, and set the Auto Scaling group back to 2.
 - Restored the permission: upload worked again.
 - Lesson: "no identity-based policy allows" = missing Allow (implicit deny). Least privilege means a missing action fails loudly and safely.
 
+
+
+### Exercise 6: Scale out under load
+- Found the ASG had NO dynamic scaling policy (I had assumed one existed). Created target tracking policy `ct-cpu-target`: average CPU 50%, warmup 120 s. Lesson: verify the thing you are about to test.
+- Ran `for i in 1 2; do yes > /dev/null & done` on both servers (t3.micro = 2 vCPUs, so one `yes` is only ~50% of the instance). Policy uses the GROUP average, so every server needs load.
+- Result: CPU reached ~89%, the high alarm fired, and the ASG added 2 instances at once (2 x 89/50 ~ 3.6, capped by max = 4). New targets went Healthy in ct-tg.
+- Stopped load with `pkill yes`. After ~15-20 min the low alarm fired, instances drained, and the group returned to the minimum (2).
+- Lesson: scale out fast, scale in slow, so the group does not flap.
+
