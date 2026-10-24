@@ -1,1 +1,104 @@
-# contract-tracker-aws
+# Contract Tracker on AWS
+
+A contract expiration tracker built as a three-tier application on AWS. Users add a contract (name, expiration date, PDF) and see how many days are left. It is deliberately built to be secure, highly available, and cheap to run in a learning budget.
+
+> **Status:** console build complete and tested (Phases 0-6). Next: rebuild with Terraform, then add CI/CD with GitHub Actions (OIDC), containers, and monitoring.
+
+## Architecture
+
+```mermaid
+flowchart TB
+    user([Internet users])
+    subgraph vpc["VPC 10.0.0.0/16 - us-west-2"]
+        igw[Internet gateway]
+        subgraph pubtier["Public tier - 2 subnets, 2 AZs"]
+            alb["Application Load Balancer<br/>ct-alb - SG ct-alb-sg"]
+            nat["NAT gateway<br/>ct-nat-a"]
+        end
+        subgraph apptier["App tier - 2 private subnets, 2 AZs"]
+            asg["Auto Scaling group<br/>EC2 t3.micro, 2 to 4 instances<br/>Flask + gunicorn on 8080<br/>SG ct-app-sg"]
+        end
+        subgraph dbtier["DB tier - 2 private subnets, 2 AZs"]
+            rds[("RDS PostgreSQL 16<br/>db.t4g.micro - SG ct-db-sg")]
+        end
+        s3ep{{"S3 gateway endpoint"}}
+    end
+    s3[("S3 bucket<br/>private - SSE-S3 - TLS only")]
+    sm["Secrets Manager<br/>DB credentials"]
+
+    user -->|"HTTP 80"| igw --> alb
+    alb -->|"8080"| asg
+    asg -->|"5432"| rds
+    asg --> s3ep --> s3
+    asg -->|"outbound only"| nat --> igw
+    asg -.->|"GetSecretValue"| sm
+```
+
+**Request flow:** browser -> internet gateway -> ALB (public subnets) -> app servers (private subnets, port 8080) -> PostgreSQL (private subnets, port 5432). PDFs go to S3 through a gateway endpoint; DB credentials come from Secrets Manager at runtime.
+
+## Design decisions
+
+| Area | Decision | Why |
+|---|---|---|
+| Network | /16 VPC, six /24 subnets (public, app, DB x 2 AZs), one route table per tier | Clear separation; a subnet is "public" only because its route table points at the internet gateway |
+| Security groups | Chained by reference: internet -> `ct-alb-sg` (80) -> `ct-app-sg` (8080) -> `ct-db-sg` (5432) | Each tier accepts traffic only from the tier in front of it; no IP ranges to maintain |
+| Credentials | EC2 instance role (temporary credentials), least-privilege inline policy, DB password in Secrets Manager | No access keys on servers or in code |
+| Access to servers | Session Manager, no SSH, no key pairs, no open port 22 | Smaller attack surface, audited access |
+| Storage | S3 with block public access, versioning, SSE-S3, and a TLS-only bucket policy | Contracts are sensitive documents |
+| Database | RDS PostgreSQL in private subnets, public access off | Only the app tier can reach it |
+| Availability | ALB + Auto Scaling group across two AZs, ELB health checks, target tracking on CPU (50%) | Survives a server or AZ failure; scales with load |
+| Deployments | Launch template versions + instance refresh | Immutable servers: replace, never patch in place |
+| Health check | `/health` does not touch the DB (shallow check) | A DB outage should not pull every server out of rotation |
+
+## Screenshots
+
+![App working](docs/screenshots/app-working.png)
+*The deployed app: a contract with its days left and the S3 key of the uploaded PDF.*
+
+![Healthy targets](docs/screenshots/targets-healthy.png)
+*Target group showing healthy servers behind the load balancer.*
+
+![S3 encryption](docs/screenshots/s3-encryption.png)
+*Uploaded contract stored with server-side encryption (SSE-S3).*
+
+![VPC resource map](docs/screenshots/vpc-resource-map.png)
+*VPC resource map: six subnets across two AZs and three route tables.*
+
+## What I tested on purpose (Phase 6)
+
+| Exercise | What I did | What happened | What I learned |
+|---|---|---|---|
+| Kill a server | Terminated one instance | Brief 504s, then all traffic went to the other AZ; ASG launched a replacement (~5 min) | Failover time = health check interval x unhealthy threshold |
+| Stop the app, not the server | `systemctl stop contracts` | EC2 status stayed green; the ELB check caught it; ASG replaced it | ELB health checks catch dead apps that EC2 checks miss |
+| Break the SG chain | Removed the ALB -> app rule on 8080 | Targets unhealthy, 504s, servers untouched | SGs drop silently; check the network path first |
+| Probe the DB from outside | `nc -vz` to the endpoint on 5432 | Timed out | Three independent layers block it (no public IP, no route, SG) |
+| Remove `s3:PutObject` | Edited the instance role policy | Upload returned 500; log showed `AccessDenied` for the role session; no ghost DB row | Missing Allow = implicit deny; the app uploads to S3 before inserting the row |
+| Load test | Pinned CPU on both servers | ASG scaled out from 2 to 4, then back to 2 after ~15 min | Scale out fast, scale in slow to avoid flapping |
+
+## Cost control
+
+The whole stack costs about **$0.12 per hour** while running (ALB, NAT gateway, 2 x t3.micro, RDS). I run it in sessions and shut it down after each one: ASG to 0, delete the NAT gateway and release its Elastic IP, delete the ALB, stop the database, then verify nothing is left. The Terraform rebuild will turn this into one `apply` and one `destroy`.
+
+## Known limitations (trade-offs I chose on purpose)
+
+- One NAT gateway in one AZ (outbound traffic is a single point of failure; a NAT per AZ would double that cost).
+- RDS is Single-AZ; I did not run the Multi-AZ failover exercise.
+- HTTP only on port 80 (no custom domain or TLS certificate yet).
+- The S3 bucket uses SSE-S3 rather than a customer-managed KMS key.
+
+## Roadmap
+
+1. Rebuild the whole stack with Terraform (remote state).
+2. GitHub Actions CI/CD with OIDC (no long-lived keys), plus tfsec/checkov scans.
+3. Containerize the app; add monitoring and alarms.
+4. HTTPS with ACM and a custom domain.
+
+## Repo layout
+
+```
+.
+├── README.md
+└── docs/
+    ├── notes.md          # build log: what I did, predictions, mistakes, lessons
+    └── screenshots/
+```
