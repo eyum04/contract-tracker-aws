@@ -491,3 +491,16 @@ target group and security group, and set the Auto Scaling group back to 2.
 - Exercise 7 (optional): Multi-AZ failover for RDS.
 
 
+
+### Exercise 5: Remove s3:PutObject from the instance role
+
+- Removed `s3:PutObject` from inline policy `ct-app-access`, then tried to add a contract with a PDF.
+- Result: app returned 500 Internal Server Error at /contracts. Main page, health checks, and existing rows kept working.
+- No row was created: the app uploads to S3 first, then inserts the DB row, so a failed upload leaves no "ghost" row.
+- Diagnosis: `journalctl -u contracts` showed `AccessDenied ... s3:PutObject ... because no identity-based policy allows the s3:PutObject action` for `assumed-role/ct-app-role/<instance-id>`.
+- CloudTrail Event history (free) only records management events; S3 object calls like PutObject are data events, so they need a trail with data events enabled (extra cost). Used the app log instead.
+- Servers use `GetSecretValue`/`Decrypt` via the role, visible in CloudTrail as the instance-id session.
+- Note: servers keep time in UTC, so use relative times (`--since "40 min ago"`) in journalctl.
+- Restored the permission: upload worked again.
+- Lesson: "no identity-based policy allows" = missing Allow (implicit deny). Least privilege means a missing action fails loudly and safely.
+
