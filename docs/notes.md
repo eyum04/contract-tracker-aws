@@ -528,3 +528,13 @@ target group and security group, and set the Auto Scaling group back to 2.
 - Rules I follow: never use root keys, never put keys in Terraform files or GitHub, secret key is shown once.
 - Later: use OIDC (no long-lived keys) for GitHub Actions; consider deleting the laptop key when not in use.
 
+
+
+### Terraform project setup (done)
+- Cloned the repo with `gh repo clone eyum04/contract-tracker-aws` after `gh auth login` (HTTPS, browser).
+- Work from the VS Code terminal; it is the same shell as the Mac Terminal.
+- `terraform/main.tf`: `terraform` block (required_version >= 1.5, aws provider ~> 6.0) + `provider "aws"` (region us-west-2). Provider = plug-in that teaches Terraform one platform.
+- Bug: "Unclosed configuration block". Counted braces: 3 openers, 2 closers. One mistake produced 3 errors; fix the FIRST error first. `cat main.tf` + counting `{` vs `}` found it.
+- `terraform fmt` standardizes spacing (2 spaces); `terraform init` downloads the provider (v6.70.0) and writes `.terraform.lock.hcl`.
+- Commit `.terraform.lock.hcl` (pins provider version). NEVER commit `.terraform/` or `*.tfstate` (state = Terraform's memory, can hold secrets). Verified with `grep -n "tfstate" ../.gitignore`.
+- git flow: `git add <files>` -> `git commit -m "..."` -> `git push`.
