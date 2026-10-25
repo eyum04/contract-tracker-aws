@@ -538,3 +538,26 @@ target group and security group, and set the Auto Scaling group back to 2.
 - `terraform fmt` standardizes spacing (2 spaces); `terraform init` downloads the provider (v6.70.0) and writes `.terraform.lock.hcl`.
 - Commit `.terraform.lock.hcl` (pins provider version). NEVER commit `.terraform/` or `*.tfstate` (state = Terraform's memory, can hold secrets). Verified with `grep -n "tfstate" ../.gitignore`.
 - git flow: `git add <files>` -> `git commit -m "..."` -> `git push`.
+
+
+### Terraform: my first resource (a VPC)
+
+Terraform is basically an instruction booklet for AWS. Instead of clicking through the console like I did before, I write a file that says what I want and Terraform builds it.
+
+**What I did**
+- Wrote a `resource "aws_vpc" "main"` block with the same 10.0.0.0/16 range as my console VPC. Named it ct-tf-vpc so I wouldn't mix it up with the one I built by hand.
+- Ran `terraform plan` first (just a preview), then `terraform apply`. A VPC is free, so no cost risk.
+- Terraform keeps a file called `terraform.tfstate`. It's its memory of what it built. It stays on my Mac and never goes on GitHub. I checked with `git check-ignore -v` that .gitignore covers it.
+
+**Things I got wrong or learned the hard way**
+- I thought the file was fine and it wasn't. I was missing one closing `}`, so Terraform said "unclosed configuration block" and then gave me two more errors that were really the same mistake. Lesson: fix the first error first, and count your brackets.
+- My guess was that changing the VPC's cidr_block wouldn't need a new VPC. Wrong. The plan showed `-/+ must be replaced`. AWS lets you add address ranges but you can't change the main one.
+
+**How I read a plan now**
+`+` is create, `~` is change in place (like adding a tag), `-` is destroy, and `-/+` is destroy and rebuild. Before I type yes I look for the words "forces replacement."
+
+**Commands so far**
+- `terraform fmt` fixes spacing
+- `terraform validate` checks the file makes sense
+- `terraform plan` previews
+- `terraform apply` builds
