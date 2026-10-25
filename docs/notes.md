@@ -513,3 +513,18 @@ target group and security group, and set the Auto Scaling group back to 2.
 - Stopped load with `pkill yes`. After ~15-20 min the low alarm fired, instances drained, and the group returned to the minimum (2).
 - Lesson: scale out fast, scale in slow, so the group does not flap.
 
+
+## Terraform setup (session 4)
+
+### Tools
+- Installed Terraform via Homebrew tap: `brew tap hashicorp/tap`, `brew install hashicorp/tap/terraform` (v1.17.0).
+- First install failed: "Your Command Line Tools are too outdated." Fix: `sudo rm -rf /Library/Developer/CommandLineTools`, then `sudo xcode-select --install`, then re-ran the brew install. Did NOT upgrade the whole OS (not needed).
+- "Tier 2 configuration" message from Homebrew is harmless (unsupported-OS note).
+
+### AWS credentials for the CLI
+- `aws sts get-caller-identity` failed with InvalidClientTokenId: the key in `~/.aws/credentials` was Inactive (113 days old).
+- Diagnosed with `aws configure list` (key came from the shared credentials file).
+- Fix: deleted the inactive key in IAM -> Users -> eyoel -> Security credentials, created a new CLI key (tag `terraform-laptop`), saved it with `aws configure` (region us-west-2, output json), verified with `aws sts get-caller-identity`.
+- Rules I follow: never use root keys, never put keys in Terraform files or GitHub, secret key is shown once.
+- Later: use OIDC (no long-lived keys) for GitHub Actions; consider deleting the laptop key when not in use.
+
