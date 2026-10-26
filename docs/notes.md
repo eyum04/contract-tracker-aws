@@ -528,3 +528,51 @@ target group and security group, and set the Auto Scaling group back to 2.
 - Rules I follow: never use root keys, never put keys in Terraform files or GitHub, secret key is shown once.
 - Later: use OIDC (no long-lived keys) for GitHub Actions; consider deleting the laptop key when not in use.
 
+
+
+### Terraform project setup (done)
+- Cloned the repo with `gh repo clone eyum04/contract-tracker-aws` after `gh auth login` (HTTPS, browser).
+- Work from the VS Code terminal; it is the same shell as the Mac Terminal.
+- `terraform/main.tf`: `terraform` block (required_version >= 1.5, aws provider ~> 6.0) + `provider "aws"` (region us-west-2). Provider = plug-in that teaches Terraform one platform.
+- Bug: "Unclosed configuration block". Counted braces: 3 openers, 2 closers. One mistake produced 3 errors; fix the FIRST error first. `cat main.tf` + counting `{` vs `}` found it.
+- `terraform fmt` standardizes spacing (2 spaces); `terraform init` downloads the provider (v6.70.0) and writes `.terraform.lock.hcl`.
+- Commit `.terraform.lock.hcl` (pins provider version). NEVER commit `.terraform/` or `*.tfstate` (state = Terraform's memory, can hold secrets). Verified with `grep -n "tfstate" ../.gitignore`.
+- git flow: `git add <files>` -> `git commit -m "..."` -> `git push`.
+
+
+### Terraform: my first resource (a VPC)
+
+Terraform is basically an instruction booklet for AWS. Instead of clicking through the console like I did before, I write a file that says what I want and Terraform builds it.
+
+**What I did**
+- Wrote a `resource "aws_vpc" "main"` block with the same 10.0.0.0/16 range as my console VPC. Named it ct-tf-vpc so I wouldn't mix it up with the one I built by hand.
+- Ran `terraform plan` first (just a preview), then `terraform apply`. A VPC is free, so no cost risk.
+- Terraform keeps a file called `terraform.tfstate`. It's its memory of what it built. It stays on my Mac and never goes on GitHub. I checked with `git check-ignore -v` that .gitignore covers it.
+
+**Things I got wrong or learned the hard way**
+- I thought the file was fine and it wasn't. I was missing one closing `}`, so Terraform said "unclosed configuration block" and then gave me two more errors that were really the same mistake. Lesson: fix the first error first, and count your brackets.
+- My guess was that changing the VPC's cidr_block wouldn't need a new VPC. Wrong. The plan showed `-/+ must be replaced`. AWS lets you add address ranges but you can't change the main one.
+
+**How I read a plan now**
+`+` is create, `~` is change in place (like adding a tag), `-` is destroy, and `-/+` is destroy and rebuild. Before I type yes I look for the words "forces replacement."
+
+**Commands so far**
+- `terraform fmt` fixes spacing
+- `terraform validate` checks the file makes sense
+- `terraform plan` previews
+- `terraform apply` builds
+
+
+
+### Terraform: internet gateway and subnets
+
+**Internet gateway**
+- Wrote `aws_internet_gateway` with `vpc_id = aws_vpc.main.id`. That's a reference: type.nickname.property. I never type the real ID, Terraform fills it in and also figures out the build order (VPC first, gateway second) and destroys in the reverse order.
+- The plan showed the real vpc_id instead of "known after apply" because the VPC already existed in the state. My guess on that was right, and I'd only have seen "known after apply" if both were new.
+
+**Subnets**
+- First I wrote one subnet by hand so I understood every line. The line `availability_zone` is what decides the data center, not vpc_id. vpc_id just says which VPC.
+- Then I turned it into a loop. `locals` is a notepad with a roster of 6 subnets (name, cidr, az). `for_each = local.subnets` makes one copy of the block per row. `each.key` is the row name, `each.value` is its details, `${each.key}` puts a value inside text.
+- Result: one template, six subnets, and adding a seventh is a one-line change to the roster.
+- My numbering: public .1/.2, app .11/.12, db .21/.22, one of each tier in each zone.
+- I named the resource `subnets` instead of `this`. If I rename after apply, Terraform would destroy and recreate it, so pick a clear name before applying.
