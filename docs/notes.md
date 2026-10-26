@@ -576,3 +576,14 @@ Terraform is basically an instruction booklet for AWS. Instead of clicking throu
 - Result: one template, six subnets, and adding a seventh is a one-line change to the roster.
 - My numbering: public .1/.2, app .11/.12, db .21/.22, one of each tier in each zone.
 - I named the resource `subnets` instead of `this`. If I rename after apply, Terraform would destroy and recreate it, so pick a clear name before applying.
+
+
+### Terraform: route tables
+
+- Why a `tier` label on each subnet: so one block can sort the subnets automatically (public ones go with the public route table, and so on) instead of me writing six hookups by hand. In the hookup block, `each.value.tier` picks the matching route table.
+- Made the 3 route tables with one block: a list of tiers turned into a set with `toset(...)`, then `for_each`. With a set, `each.key` is just the word itself ("public").
+- The public route is `0.0.0.0/0` through the internet gateway. That route is what makes a subnet "public". The app and db tables only have the local route.
+- Left out the app -> NAT route on purpose because the NAT gateway costs money per hour. I'll add it later behind an on/off switch.
+- One apply made 10 things (3 route tables, 1 route, 6 associations). `terraform state list` shows 18 things in total now.
+- Checked in the console: ct-tf-public-rt has the igw route and public-a/public-b, and app and db only have local.
+- Mistakes this time: typed `git add terraform/main.tf` while already inside the terraform folder (wrong path), and a pull typo (`--n rebase` instead of `--no-rebase`). Also git rejected my push because I'd edited on the GitHub website. Pull before you push.
