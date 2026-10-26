@@ -561,3 +561,18 @@ Terraform is basically an instruction booklet for AWS. Instead of clicking throu
 - `terraform validate` checks the file makes sense
 - `terraform plan` previews
 - `terraform apply` builds
+
+
+
+### Terraform: internet gateway and subnets
+
+**Internet gateway**
+- Wrote `aws_internet_gateway` with `vpc_id = aws_vpc.main.id`. That's a reference: type.nickname.property. I never type the real ID, Terraform fills it in and also figures out the build order (VPC first, gateway second) and destroys in the reverse order.
+- The plan showed the real vpc_id instead of "known after apply" because the VPC already existed in the state. My guess on that was right, and I'd only have seen "known after apply" if both were new.
+
+**Subnets**
+- First I wrote one subnet by hand so I understood every line. The line `availability_zone` is what decides the data center, not vpc_id. vpc_id just says which VPC.
+- Then I turned it into a loop. `locals` is a notepad with a roster of 6 subnets (name, cidr, az). `for_each = local.subnets` makes one copy of the block per row. `each.key` is the row name, `each.value` is its details, `${each.key}` puts a value inside text.
+- Result: one template, six subnets, and adding a seventh is a one-line change to the roster.
+- My numbering: public .1/.2, app .11/.12, db .21/.22, one of each tier in each zone.
+- I named the resource `subnets` instead of `this`. If I rename after apply, Terraform would destroy and recreate it, so pick a clear name before applying.
