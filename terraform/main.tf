@@ -141,3 +141,101 @@ resource "aws_vpc_security_group_ingress_rule" "db_from_app" {
   from_port                    = 5432
   to_port                      = 5432
 }
+
+resource "aws_s3_bucket" "contracts" {
+  bucket = var.bucket_name
+
+  tags = {
+    Name = "ct-tf-contracts"
+  }
+}
+resource "aws_s3_bucket_public_access_block" "contracts" {
+  bucket = aws_s3_bucket.contracts.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+resource "aws_s3_bucket_versioning" "contracts" {
+  bucket = aws_s3_bucket.contracts.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+resource "aws_s3_bucket_server_side_encryption_configuration" "contracts" {
+  bucket = aws_s3_bucket.contracts.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "contracts" {
+  bucket = aws_s3_bucket.contracts.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "DenyInsecureTransport"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = "s3:*"
+      Resource = [
+        aws_s3_bucket.contracts.arn,
+        "${aws_s3_bucket.contracts.arn}/*"
+      ]
+      Condition = {
+        Bool = { "aws:SecureTransport" = "false" }
+      }
+    }]
+  })
+
+  depends_on = [aws_s3_bucket_public_access_block.contracts]
+}
+
+resource "aws_iam_role" "app" {
+  name = "ct-tf-app-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "ec2.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ssm" {
+  role       = aws_iam_role.app.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_role_policy" "app_access" {
+  name = "ct-tf-app-access"
+  role = aws_iam_role.app.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "ContractFiles"
+      Effect = "Allow"
+      Action = [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:AbortMultipartUpload",
+        "s3:ListMultipartUploadParts"
+      ]
+      Resource = "${aws_s3_bucket.contracts.arn}/contracts/*"
+    }]
+  })
+}
+
+resource "aws_iam_instance_profile" "app" {
+  name = "ct-tf-app-profile"
+  role = aws_iam_role.app.name
+}
