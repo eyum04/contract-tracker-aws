@@ -600,3 +600,20 @@ Terraform is basically an instruction booklet for AWS. Instead of clicking throu
 - A rule is about who can come IN to this group, not where it goes. The db only lets the app in (least privilege). I left the db with no outbound rule on purpose, since the database never starts connections and replies are allowed automatically (stateful).
 - 8 things added in one apply. Free.
 - Ran `terraform` from the main repo folder by mistake and got "No configuration files". Terraform commands run from the terraform folder.
+
+
+### Terraform: S3 bucket and IAM role
+
+**Variable**
+- A variable (`variable "bucket_name"` in variables.tf) is a blank on a form. I use it as `var.bucket_name`. I made the bucket name one because S3 names have to be unique in the whole world, and the name shows up in several places (bucket, policy, role permissions), so writing it once keeps them from disagreeing.
+
+**S3 bucket**
+- The console settings became separate blocks: bucket, public access block, versioning, encryption (`sse_algorithm = "AES256"` is SSE-S3), and the TLS-only policy.
+- The TLS-only policy is a Deny on `aws:SecureTransport = "false"`, so only insecure connections get blocked. `jsonencode` turns Terraform into the JSON AWS wants. `.arn` gives a resource's full address.
+- `depends_on` makes it wait for the public access block first, because S3 gets cranky when two settings change at once.
+
+**IAM role**
+- Two lists people mix up: the trust policy (who may wear the role: ec2.amazonaws.com) and the permission policies (what the role can do).
+- The instance profile is the hanger that lets an EC2 server pick up the role. The console made it for me quietly; Terraform makes me write it.
+- The permissions only allow 4 S3 actions and only on `contracts/*` (least privilege). I left the secret permission out for now because the database doesn't exist yet. I'll add it later and Terraform should show it as `~` (change in place).
+- I mistyped nothing this time, but I almost forgot the ARN in the policy has to point at the bucket by reference, not a copy-pasted name.
