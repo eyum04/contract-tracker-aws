@@ -79,3 +79,65 @@ resource "aws_route_table_association" "subnets" {
   subnet_id      = aws_subnet.subnets[each.key].id
   route_table_id = aws_route_table.tiers[each.value.tier].id
 }
+
+resource "aws_security_group" "alb" {
+  name        = "ct-tf-alb-sg"
+  description = "Load balancer: Http from the internet"
+  vpc_id      = aws_vpc.main.id
+
+  tags = {
+    Name = "ct-tf-alb-sg"
+  }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "alb_http" {
+  security_group_id = aws_security_group.alb.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "tcp"
+  from_port         = 80
+  to_port           = 80
+}
+resource "aws_vpc_security_group_egress_rule" "alb_all_out" {
+  security_group_id = aws_security_group.alb.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1"
+}
+
+resource "aws_security_group" "app" {
+  name        = "ct-tf-app-sg"
+  description = "App servers: 8080 from the load balancer only"
+  vpc_id      = aws_vpc.main.id
+
+  tags = {
+    Name = "ct-tf-app-sg"
+  }
+}
+resource "aws_vpc_security_group_ingress_rule" "app_from_alb" {
+  security_group_id            = aws_security_group.app.id
+  referenced_security_group_id = aws_security_group.alb.id
+  ip_protocol                  = "tcp"
+  from_port                    = 8080
+  to_port                      = 8080
+}
+resource "aws_vpc_security_group_egress_rule" "app_all_out" {
+  security_group_id = aws_security_group.app.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1"
+}
+
+resource "aws_security_group" "db" {
+  name        = "ct-tf-db-sg"
+  description = "Database: 5432 from the app servers only"
+  vpc_id      = aws_vpc.main.id
+
+  tags = {
+    Name = "ct-tf-db-sg"
+  }
+}
+resource "aws_vpc_security_group_ingress_rule" "db_from_app" {
+  security_group_id            = aws_security_group.db.id
+  referenced_security_group_id = aws_security_group.app.id
+  ip_protocol                  = "tcp"
+  from_port                    = 5432
+  to_port                      = 5432
+}

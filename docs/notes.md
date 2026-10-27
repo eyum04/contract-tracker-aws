@@ -587,3 +587,16 @@ Terraform is basically an instruction booklet for AWS. Instead of clicking throu
 - One apply made 10 things (3 route tables, 1 route, 6 associations). `terraform state list` shows 18 things in total now.
 - Checked in the console: ct-tf-public-rt has the igw route and public-a/public-b, and app and db only have local.
 - Mistakes this time: typed `git add terraform/main.tf` while already inside the terraform folder (wrong path), and a pull typo (`--n rebase` instead of `--no-rebase`). Also git rejected my push because I'd edited on the GitHub website. Pull before you push.
+
+
+
+### Terraform: security groups
+
+- A security group is a bouncer for a server. Each rule is a line on the bouncer's list. In Terraform, the group (`aws_security_group`) and each rule (`aws_vpc_security_group_ingress_rule` / `_egress_rule`) are separate blocks.
+- Terraform removes the default "allow all outbound" rule, so I have to write egress rules myself. If I forget, the load balancer can't reach the servers even though everything looks right.
+- Typo I made: wrote `aws_security_group_ingress_rule` and left out `vpc_`. Terraform said "provider does not support resource type". Resource type names have to match exactly. The VS Code suggestion list helps.
+- The chain: internet -> alb (80) -> app (8080) -> db (5432). Each rule uses `referenced_security_group_id` to point at the group in front of it, instead of an IP range.
+- The first line of every rule (`security_group_id`) says which bouncer the rule is on. I almost put the db rule on the app group. Always read that line.
+- A rule is about who can come IN to this group, not where it goes. The db only lets the app in (least privilege). I left the db with no outbound rule on purpose, since the database never starts connections and replies are allowed automatically (stateful).
+- 8 things added in one apply. Free.
+- Ran `terraform` from the main repo folder by mistake and got "No configuration files". Terraform commands run from the terraform folder.
