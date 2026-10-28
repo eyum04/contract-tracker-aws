@@ -617,3 +617,14 @@ Terraform is basically an instruction booklet for AWS. Instead of clicking throu
 - The instance profile is the hanger that lets an EC2 server pick up the role. The console made it for me quietly; Terraform makes me write it.
 - The permissions only allow 4 S3 actions and only on `contracts/*` (least privilege). I left the secret permission out for now because the database doesn't exist yet. I'll add it later and Terraform should show it as `~` (change in place).
 - I mistyped nothing this time, but I almost forgot the ARN in the policy has to point at the bucket by reference, not a copy-pasted name.
+
+
+### Terraform: the on/off switch (stack_up)
+
+- Some things cost money every hour (NAT gateway, load balancer, servers, database). I made a true/false variable `stack_up` that defaults to false, like a light switch. `-var="stack_up=true"` flips it for one command only; the next command springs back to off.
+- `count = var.stack_up ? 1 : 0` means: if the switch is on, make 1 copy, otherwise make 0. Zero copies means the block doesn't exist. When count makes copies they're numbered from 0, so I point at them as `aws_eip.nat[0]`.
+- NAT chain: elastic IP -> NAT gateway (in public-a) -> route on the app route table (`0.0.0.0/0` through the NAT). Not on the public table (it already has the internet gateway) and not on the db table (no way out on purpose). `depends_on` makes the NAT wait for the internet gateway.
+- Typos Terraform caught: `var.stack_up` used before I declared it in variables.tf, and a subnet key `["public"]` when the roster key is `"public-a"`. Both were caught by validate/plan before touching AWS.
+- Load balancer: target group is free so it always exists; the load balancer and listener are behind the switch. I put my Phase 6 lessons in the target group: health check every 15s and `deregistration_delay = 30`.
+- Missing a closing `}` again (target group). I found it myself by counting openers and closers.
+- Rule I follow: never apply with `stack_up=true` unless I'm ready to pay by the hour.
