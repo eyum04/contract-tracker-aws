@@ -628,3 +628,12 @@ Terraform is basically an instruction booklet for AWS. Instead of clicking throu
 - Load balancer: target group is free so it always exists; the load balancer and listener are behind the switch. I put my Phase 6 lessons in the target group: health check every 15s and `deregistration_delay = 30`.
 - Missing a closing `}` again (target group). I found it myself by counting openers and closers.
 - Rule I follow: never apply with `stack_up=true` unless I'm ready to pay by the hour.
+
+
+ ### Terraform: secret permission only when the database exists
+
+- The policy's Statement is a list of "hall passes." Pass 1 is the S3 pass (always there). Pass 2 is the secret pass, which should only exist when the database exists.
+- `concat(list1, list2)` glues two lists. `var.stack_up ? [pass 2] : []` means: if the switch is on, a list with pass 2, otherwise an empty list. Together, the pass disappears with the database.
+- Plan results: switch off = "No changes." Switch on = "6 to add, 1 to change, 0 to destroy", where the 1 change is the policy (`~`).
+- Bracket kinds: `( )` are inputs to a function, `[ ]` is a list, `{ }` is one thing with settings. I typed `concat{` instead of `concat(`, and VS Code's auto-closing left a stray `}` that made an empty pass.
+- Sid can only be letters and numbers (no spaces). Terraform doesn't know that; AWS would reject it at apply. `validate` only checks my file is well-formed, not AWS's own rules.

@@ -221,17 +221,25 @@ resource "aws_iam_role_policy" "app_access" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Sid    = "ContractFiles"
-      Effect = "Allow"
-      Action = [
-        "s3:GetObject",
-        "s3:PutObject",
-        "s3:AbortMultipartUpload",
-        "s3:ListMultipartUploadParts"
-      ]
-      Resource = "${aws_s3_bucket.contracts.arn}/contracts/*"
-    }]
+    Statement = concat(
+      [{
+        Sid    = "ContractFiles"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:AbortMultipartUpload",
+          "s3:ListMultipartUploadParts"
+        ]
+        Resource = "${aws_s3_bucket.contracts.arn}/contracts/*"
+      }],
+      var.stack_up ? [{
+        Sid      = "Read database secret"
+        Effect   = "Allow"
+        Action   = "secretsmanager:GetSecretValue"
+        Resource = aws_db_instance.db[0].master_user_secret[0].secret_arn
+      }] : []
+    )
   })
 }
 
@@ -239,3 +247,117 @@ resource "aws_iam_instance_profile" "app" {
   name = "ct-tf-app-profile"
   role = aws_iam_role.app.name
 }
+
+resource "aws_eip" "nat" {
+  count  = var.stack_up ? 1 : 0
+  domain = "vpc"
+
+  tags = {
+    Name = "ct-tf-nat-eip"
+  }
+}
+
+resource "aws_nat_gateway" "a" {
+  count         = var.stack_up ? 1 : 0
+  allocation_id = aws_eip.nat[0].id
+  subnet_id     = aws_subnet.subnets["public-a"].id
+
+  tags = {
+    Name = "ct-tf-nat-gateway"
+  }
+
+  depends_on = [aws_internet_gateway.igw]
+}
+
+resource "aws_route" "app_nat" {
+  count                  = var.stack_up ? 1 : 0
+  route_table_id         = aws_route_table.tiers["app"].id
+  destination_cidr_block = "0.0.0.0/0"
+  nat_gateway_id         = aws_nat_gateway.a[0].id
+}
+
+resource "aws_lb_target_group" "app" {
+  name                 = "ct-tf-tg"
+  port                 = 8080
+  protocol             = "HTTP"
+  vpc_id               = aws_vpc.main.id
+  deregistration_delay = 30
+
+
+  health_check {
+    path                = "/health"
+    interval            = 15
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    matcher             = "200"
+  }
+
+
+  tags = {
+    Name = "ct-tf-tg"
+  }
+}
+
+resource "aws_lb" "app" {
+  count              = var.stack_up ? 1 : 0
+  name               = "ct-tf-alb"
+  load_balancer_type = "application"
+  internal           = false
+  security_groups    = [aws_security_group.alb.id]
+  subnets = [
+    aws_subnet.subnets["public-a"].id,
+    aws_subnet.subnets["public-b"].id,
+  ]
+
+  tags = {
+    Name = "ct-tf-alb"
+  }
+}
+
+resource "aws_lb_listener" "http" {
+  count             = var.stack_up ? 1 : 0
+  load_balancer_arn = aws_lb.app[0].arn
+  port              = 80
+  protocol          = "HTTP"
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app.arn
+  }
+}
+
+resource "aws_db_subnet_group" "db" {
+  name = "ct-tf-db-subnet-group"
+  subnet_ids = [
+    aws_subnet.subnets["db-a"].id,
+    aws_subnet.subnets["db-b"].id
+  ]
+
+  tags = {
+    Name = "ct-tf-db-subnet-group"
+  }
+}
+
+resource "aws_db_instance" "db" {
+  count                       = var.stack_up ? 1 : 0
+  identifier                  = "ct-tf-db"
+  engine                      = "postgres"
+  engine_version              = "16"
+  instance_class              = "db.t4g.micro"
+  allocated_storage           = "20"
+  storage_type                = "gp3"
+  storage_encrypted           = "true"
+  db_name                     = "contracts"
+  username                    = "postgres"
+  manage_master_user_password = true
+  db_subnet_group_name        = aws_db_subnet_group.db.name
+  vpc_security_group_ids      = [aws_security_group.db.id]
+  publicly_accessible         = false
+  multi_az                    = false
+  skip_final_snapshot         = true
+
+  tags = {
+    Name = "ct-tf-db"
+  }
+}
+
