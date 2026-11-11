@@ -650,3 +650,14 @@ Terraform is basically an instruction booklet for AWS. Instead of clicking throu
 - Mistakes I made: ran `plan` from the repo root instead of the `terraform` folder, put a line break after `user_data =`, and named the file `user-data.sh` in the code when the real file is `user_data.sh.tpl`. Terraform's error message told me exactly which file it couldn't find.
 - IMDSv2: the server keeps a note with its hall pass keys. The old way lets anyone ask for the note. The new way makes you get a ticket first, so a trick through the web app can't grab it. `http_tokens = "required"` turns the old way off. The app still works because boto3 gets the ticket by itself.
 - Plan with the switch on: 7 to add, 1 to change, 0 to destroy. With it off: no changes.
+
+
+## Terraform: Auto Scaling group and scaling policy
+
+- The launch template is the recipe. The Auto Scaling group is the manager that follows it. It keeps 2 servers (min 2, max 4), one in each app subnet, and registers them with the load balancer.
+- I put `health_check_type = "ELB"` so the load balancer decides if a server is healthy. From my Exercise 2 test, a server can look fine to EC2 while the app is dead. Only the ELB check catches that.
+- `health_check_grace_period = 300` gives a new server 5 minutes to boot before it can be judged unhealthy.
+- `depends_on = [aws_route.app_nat]` makes Terraform build the NAT route before the servers. A new server downloads Python and its libraries when it boots, so it has to have a way out to the internet first.
+- The ASG and the policy both have `count` behind my `stack_up` switch, so they use `[0]` when other resources point at them.
+- The scaling policy works like a thermostat: target 50% average CPU. Above it, the ASG adds servers (up to 4). Below it, it removes them slowly (down to 2). Same as my load test in the console build.
+- Plan with the switch on: 9 to add, 1 to change, 0 to destroy. I have not applied it yet. Applying with the switch on costs about $0.12 per hour.
