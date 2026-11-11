@@ -637,3 +637,16 @@ Terraform is basically an instruction booklet for AWS. Instead of clicking throu
 - Plan results: switch off = "No changes." Switch on = "6 to add, 1 to change, 0 to destroy", where the 1 change is the policy (`~`).
 - Bracket kinds: `( )` are inputs to a function, `[ ]` is a list, `{ }` is one thing with settings. I typed `concat{` instead of `concat(`, and VS Code's auto-closing left a stray `}` that made an empty pass.
 - Sid can only be letters and numbers (no spaces). Terraform doesn't know that; AWS would reject it at apply. `validate` only checks my file is well-formed, not AWS's own rules.
+
+
+## Terraform: launch template (the server recipe)
+
+- A launch template is the recipe the Auto Scaling group uses to make a new server: which image, what size, which security group, which role, and a startup script.
+- A `data` block only looks something up. I used one to ask AWS for the newest Amazon Linux 2023 image so I'm not hardcoding an image ID that goes out of date. It never shows up as "to add" in a plan, because it builds nothing.
+- I put `count = var.stack_up ? 1 : 0` on it. I first thought that was just so it turns on with the switch. It's also because the startup script points at the database, and the database only exists when the switch is on.
+- The instance profile is the holder that lets the server wear the IAM role. Without it the app would load but fail with AccessDenied on the secret and S3.
+- I turned the old startup script into a template file with three blanks: `${bucket_name}`, `${secret_arn}`, `${db_endpoint}`. `templatefile` fills them in. The secret ARN comes from `aws_db_instance.db[0].master_user_secret[0].secret_arn` because AWS makes that secret itself.
+- Predicted the plan would print the whole script. Wrong. It says `(known after apply)` because the database doesn't exist yet, so Terraform can't fill in the blanks.
+- Mistakes I made: ran `plan` from the repo root instead of the `terraform` folder, put a line break after `user_data =`, and named the file `user-data.sh` in the code when the real file is `user_data.sh.tpl`. Terraform's error message told me exactly which file it couldn't find.
+- IMDSv2: the server keeps a note with its hall pass keys. The old way lets anyone ask for the note. The new way makes you get a ticket first, so a trick through the web app can't grab it. `http_tokens = "required"` turns the old way off. The app still works because boto3 gets the ticket by itself.
+- Plan with the switch on: 7 to add, 1 to change, 0 to destroy. With it off: no changes.

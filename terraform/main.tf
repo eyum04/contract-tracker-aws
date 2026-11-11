@@ -361,3 +361,31 @@ resource "aws_db_instance" "db" {
   }
 }
 
+data "aws_ssm_parameter" "al2023" {
+  name = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
+}
+
+resource "aws_launch_template" "app" {
+  count = var.stack_up ? 1 : 0
+
+  name          = "ct-tf-app-lt"
+  image_id      = data.aws_ssm_parameter.al2023.value
+  instance_type = "t3.micro"
+
+  vpc_security_group_ids = [aws_security_group.app.id]
+
+  iam_instance_profile {
+    name = aws_iam_instance_profile.app.name
+  }
+
+  user_data = base64encode(templatefile("${path.module}/user_data.sh.tpl", {
+    bucket_name = aws_s3_bucket.contracts.bucket
+    secret_arn  = aws_db_instance.db[0].master_user_secret[0].secret_arn
+    db_endpoint = aws_db_instance.db[0].address
+  }))
+
+  metadata_options {
+    http_endpoint = "enabled"
+    http_tokens   = "required"
+  }
+}
