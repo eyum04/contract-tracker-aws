@@ -661,3 +661,12 @@ Terraform is basically an instruction booklet for AWS. Instead of clicking throu
 - The ASG and the policy both have `count` behind my `stack_up` switch, so they use `[0]` when other resources point at them.
 - The scaling policy works like a thermostat: target 50% average CPU. Above it, the ASG adds servers (up to 4). Below it, it removes them slowly (down to 2). Same as my load test in the console build.
 - Plan with the switch on: 9 to add, 1 to change, 0 to destroy. I have not applied it yet. Applying with the switch on costs about $0.12 per hour.
+
+
+## Terraform: output for the app's address
+
+- An `output` block tells Terraform to print something when it finishes. I used it to print the load balancer's address, so I don't have to hunt for it in the console.
+- The load balancer only exists when `stack_up` is true, so `aws_lb.app[0]` doesn't exist when the switch is off. I used the same `? :` choice as the other switch blocks: if on, build the address, otherwise print "stack is off".
+- I put a line break after the `:` and VS Code showed a red squiggle. Terraform wants the whole `? :` on one line. Same mistake I made with `user_data =` earlier.
+- Plan with the switch off: no resource changes, only `+ app_url = "stack is off"`. Plan with it on: 9 to add, 1 to change, 0 to destroy, and `app_url` is "known after apply".
+- Next: first full stack-up with `terraform apply -var="stack_up=true"`.

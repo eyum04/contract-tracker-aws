@@ -432,3 +432,8 @@ resource "aws_autoscaling_policy" "cpu" {
     target_value = 50
   }
 }
+
+output "app_url" {
+  description = "Address of the app, printed when the stack is up"
+  value       = var.stack_up ? "http://${aws_lb.app[0].dns_name}" : "stack is off"
+}
