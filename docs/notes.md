@@ -670,3 +670,15 @@ Terraform is basically an instruction booklet for AWS. Instead of clicking throu
 - I put a line break after the `:` and VS Code showed a red squiggle. Terraform wants the whole `? :` on one line. Same mistake I made with `user_data =` earlier.
 - Plan with the switch off: no resource changes, only `+ app_url = "stack is off"`. Plan with it on: 9 to add, 1 to change, 0 to destroy, and `app_url` is "known after apply".
 - Next: first full stack-up with `terraform apply -var="stack_up=true"`.
+
+
+## Terraform: first full stack-up and teardown
+
+- Ran `terraform apply -var="stack_up=true"` for the first time. It built the whole stack from code: NAT gateway, load balancer, servers, database, and the scaling policy.
+- It stopped partway with an IAM error: "Statement IDs (SID) must be alpha-numeric." I had `Sid = "Read database secret"` with spaces. I even wrote this exact warning in my Step 37 notes, but `validate` and `plan` can't catch it because only AWS knows that rule. Fixed it by making it `ReadDatabaseSecret`.
+- Terraform didn't undo anything. It had already built everything else, so the second apply showed 0 to add, 1 to change, 0 to destroy. It remembers what it built.
+- The `output` block printed the app's address when the apply finished. I opened it and the app loaded from infrastructure built entirely by Terraform.
+- Tested with a fake sample contract. The row appeared with days left, the PDF showed up in the `contracts/` folder in S3, and both targets were healthy.
+- Teardown: plain `terraform apply` with no `-var`. The switch defaults to false, so Terraform destroyed everything that bills by the hour and kept the free stuff (VPC, subnets, security groups, S3 bucket, IAM role). The database was deleted with no backup, as I planned.
+- Checked the console afterward: no instances running, no NAT gateway, no Elastic IP, no load balancer, no database. The VPC still shows "available," which is normal and free.
+- Takeaway: `plan` shows what Terraform thinks will happen, but only a real `apply` tells you what AWS accepts. And tearing down with one command is the reason the switch was worth building.

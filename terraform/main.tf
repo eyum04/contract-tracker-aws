@@ -234,7 +234,7 @@ resource "aws_iam_role_policy" "app_access" {
         Resource = "${aws_s3_bucket.contracts.arn}/contracts/*"
       }],
       var.stack_up ? [{
-        Sid      = "Read database secret"
+        Sid      = "ReadDatabaseSecret"
         Effect   = "Allow"
         Action   = "secretsmanager:GetSecretValue"
         Resource = aws_db_instance.db[0].master_user_secret[0].secret_arn
