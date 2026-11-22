@@ -682,3 +682,14 @@ Terraform is basically an instruction booklet for AWS. Instead of clicking throu
 - Teardown: plain `terraform apply` with no `-var`. The switch defaults to false, so Terraform destroyed everything that bills by the hour and kept the free stuff (VPC, subnets, security groups, S3 bucket, IAM role). The database was deleted with no backup, as I planned.
 - Checked the console afterward: no instances running, no NAT gateway, no Elastic IP, no load balancer, no database. The VPC still shows "available," which is normal and free.
 - Takeaway: `plan` shows what Terraform thinks will happen, but only a real `apply` tells you what AWS accepts. And tearing down with one command is the reason the switch was worth building.
+
+
+## Terraform: remote state in S3
+
+- Terraform keeps a notebook (`terraform.tfstate`) of everything it built. It was only on my laptop. If the laptop died, Terraform would forget everything, and a GitHub robot couldn't read it. Remote state puts the notebook in an S3 bucket.
+- I made the state bucket by hand in the console, outside Terraform. Terraform can't store its notebook in a bucket that the same notebook has to create first. Chicken and egg. I turned on versioning (so I can recover an old copy), kept block public access on, and left SSE-S3 encryption on.
+- `backend.tf` tells Terraform where the notebook lives: the bucket, the path (`contract-tracker/terraform.tfstate`), the region, `encrypt = true`, and `use_lockfile = true`. The lockfile is a do-not-disturb sign so two runs can't write at once.
+- I messed up first: I ran `terraform init -migrate-state` and it said "successfully initialized" and `plan` said "No changes," but the S3 bucket was empty. `backend.tf` was empty because I hadn't saved it. With no backend block, Terraform quietly keeps using the local file, and it never asked me the copy question. `cat backend.tf` printed nothing, which gave it away.
+- After I saved the block and ran `init -migrate-state` again, it asked to copy my existing state to the new backend. I said yes. The file showed up in the bucket and `plan` still said "No changes."
+- Lesson: "success" from Terraform doesn't mean it did what I meant. I check the result in the console.
+- `backend.tf` is safe to commit. It only has the bucket name and region, no keys. `terraform.tfstate` stays out of git.
