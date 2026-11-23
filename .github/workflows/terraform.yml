@@ -18,10 +18,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Show token subject
-        run: |
-          curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | python3 -c "import sys,json,base64; t=json.load(sys.stdin)['value'].split('.')[1]; t+='='*(-len(t)%4); print(json.loads(base64.urlsafe_b64decode(t))['sub'])"
-
       - uses: hashicorp/setup-terraform@v3
 
       - uses: aws-actions/configure-aws-credentials@v4
