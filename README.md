@@ -2,7 +2,7 @@
 
 A contract expiration tracker built as a three-tier application on AWS. Users add a contract (name, expiration date, PDF) and see how many days are left. It is deliberately built to be secure, highly available, and cheap to run in a learning budget.
 
-> **Status:** console build complete and tested (Phases 0-6). Next: rebuild with Terraform, then add CI/CD with GitHub Actions (OIDC), containers, and monitoring.
+> **Status:** console build complete and tested (Phases 0–6). The whole stack is now rebuilt in Terraform with remote state in S3, and a GitHub Actions pipeline (OIDC, plan-only) checks every pull request. Next: security scans, a demo video, containers and monitoring.
 
 ## Architecture
 
@@ -75,9 +75,34 @@ flowchart TB
 | Remove `s3:PutObject` | Edited the instance role policy | Upload returned 500; log showed `AccessDenied` for the role session; no ghost DB row | Missing Allow = implicit deny; the app uploads to S3 before inserting the row |
 | Load test | Pinned CPU on both servers | ASG scaled out from 2 to 4, then back to 2 after ~15 min | Scale out fast, scale in slow to avoid flapping |
 
+## Infrastructure as code (Terraform)
+
+I built the stack by hand in the console first so I'd understand every piece, then rebuilt all of it in Terraform (in `terraform/`) and ran it end to end: it brought the app up, I uploaded a test contract, then I tore it down.
+
+- `main.tf`: VPC, subnets, security groups, ALB, Auto Scaling group, RDS, S3 bucket and IAM roles
+- `user_data.sh.tpl`: the startup script the servers run
+- `variables.tf`: the bucket name and the `stack_up` switch
+- `backend.tf`: keeps Terraform's state in S3 with locking instead of on my laptop
+- `github_oidc.tf`: the role the GitHub Actions pipeline uses to log in
+
+**The `stack_up` switch.** It defaults to `false`. While it's off, the hourly-cost pieces (NAT gateway, ALB, database) don't exist. Turning it on creates them (about $0.12 an hour) and prints the app URL.
+
+To run it: `cd terraform`, `terraform init`, then `terraform apply -var="stack_up=true"`. To shut it down, run `terraform apply` again without the variable. The bucket names in `variables.tf` and `backend.tf` are mine, so anyone else would need to pick their own.
+
+
+## CI/CD pipeline (GitHub Actions)
+
+Every pull request, and every push to `main`, runs a workflow (`.github/workflows/terraform.yml`) that checks the Terraform with `fmt -check`, `init`, `validate` and `plan`.
+
+**No AWS keys are stored in GitHub.** The workflow logs in with OIDC. GitHub gives each run a short-lived token, and an IAM role (`ct-tf-github-actions`) only trusts that token if it comes from this repo.
+
+**Plan-only on purpose.** The role has read-only access, plus a few permissions on the state bucket (read the state, write the lock file). It can't create or delete anything, so a bad pull request can't break my account. I run `apply` myself.
+
+**The bug that took the longest.** The login kept failing with "Not authorized to perform sts:AssumeRoleWithWebIdentity" even though my trust policy matched every tutorial. I printed the token's real `sub` claim and found that GitHub now puts numeric account and repo IDs in it, so the old format never matched. The full story is in `docs/notes.md`.
+
 ## Cost control
 
-The whole stack costs about **$0.12 per hour** while running (ALB, NAT gateway, 2 x t3.micro, RDS). I run it in sessions and shut it down after each one: ASG to 0, delete the NAT gateway and release its Elastic IP, delete the ALB, stop the database, then verify nothing is left. The Terraform rebuild will turn this into one `apply` and one `destroy`.
+The whole stack costs about **$0.12 per hour** while running (ALB, NAT gateway, 2 x t3.micro, RDS). I run it in sessions and shut it down after each one: ASG to 0, delete the NAT gateway and release its Elastic IP, delete the ALB, stop the database, then verify nothing is left. In the Terraform version, a `stack_up` switch controls the hourly pieces (NAT gateway, ALB, database): with it off they don't exist, and one `apply` with it on brings the whole app up.
 
 ## Known limitations (trade-offs I chose on purpose)
 
@@ -108,17 +133,26 @@ The whole stack costs about **$0.12 per hour** while running (ALB, NAT gateway, 
 
 ## Roadmap
 
-1. Rebuild the whole stack with Terraform (remote state).
-2. GitHub Actions CI/CD with OIDC (no long-lived keys), plus tfsec/checkov scans.
-3. Containerize the app; add monitoring and alarms.
-4. HTTPS with ACM and a custom domain.
+- [x] Rebuild the whole stack with Terraform (remote state)
+- [x] GitHub Actions CI/CD with OIDC (no long-lived keys)
+- [ ] tfsec/checkov scans in the pipeline
+- [ ] Containerize the app; add monitoring and alarms
+- [ ] HTTPS with ACM and a custom domain
 
 ## Repo layout
 
 ```
 .
 ├── README.md
+├── terraform/
+│   ├── main.tf               # the whole stack
+│   ├── user_data.sh.tpl      # server startup script
+│   ├── variables.tf          # bucket name and the stack_up switch
+│   ├── backend.tf            # remote state in S3
+│   └── github_oidc.tf        # login role for the pipeline
+├── .github/workflows/
+│   └── terraform.yml         # the CI pipeline
 └── docs/
-    ├── notes.md          # build log: what I did, predictions, mistakes, lessons
+    ├── notes.md              # build log: what I did, predictions, mistakes, lessons
     └── screenshots/
 ```
