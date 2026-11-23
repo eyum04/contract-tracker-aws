@@ -23,6 +23,14 @@ resource "aws_vpc" "main" {
   }
 }
 
+resource "aws_default_security_group" "default" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "ct-tf-default-locked"
+  }
+}
+
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
 
@@ -177,6 +185,27 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "contracts" {
       sse_algorithm = "AES256"
     }
   }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "contracts" {
+  bucket = aws_s3_bucket.contracts.id
+
+  rule {
+    id     = "clean-up-old-versions"
+    status = "Enabled"
+
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = 90
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+
+  depends_on = [aws_s3_bucket_versioning.contracts]
 }
 
 resource "aws_s3_bucket_policy" "contracts" {
