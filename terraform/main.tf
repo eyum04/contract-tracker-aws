@@ -23,6 +23,14 @@ resource "aws_vpc" "main" {
   }
 }
 
+resource "aws_default_security_group" "default" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "ct-tf-default-locked"
+  }
+}
+
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
 
@@ -96,11 +104,13 @@ resource "aws_vpc_security_group_ingress_rule" "alb_http" {
   ip_protocol       = "tcp"
   from_port         = 80
   to_port           = 80
+  description       = "HTTP from the internet"
 }
 resource "aws_vpc_security_group_egress_rule" "alb_all_out" {
   security_group_id = aws_security_group.alb.id
   cidr_ipv4         = "0.0.0.0/0"
   ip_protocol       = "-1"
+  description       = "Load balancer outbound, anywhere"
 }
 
 resource "aws_security_group" "app" {
@@ -115,6 +125,7 @@ resource "aws_security_group" "app" {
 resource "aws_vpc_security_group_ingress_rule" "app_from_alb" {
   security_group_id            = aws_security_group.app.id
   referenced_security_group_id = aws_security_group.alb.id
+  description                  = "8080 from the load balancer only"
   ip_protocol                  = "tcp"
   from_port                    = 8080
   to_port                      = 8080
@@ -123,6 +134,7 @@ resource "aws_vpc_security_group_egress_rule" "app_all_out" {
   security_group_id = aws_security_group.app.id
   cidr_ipv4         = "0.0.0.0/0"
   ip_protocol       = "-1"
+  description       = "App servers outbound, anywhere"
 }
 
 resource "aws_security_group" "db" {
@@ -137,6 +149,7 @@ resource "aws_security_group" "db" {
 resource "aws_vpc_security_group_ingress_rule" "db_from_app" {
   security_group_id            = aws_security_group.db.id
   referenced_security_group_id = aws_security_group.app.id
+  description                  = "5432 from the app servers only"
   ip_protocol                  = "tcp"
   from_port                    = 5432
   to_port                      = 5432
@@ -172,6 +185,27 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "contracts" {
       sse_algorithm = "AES256"
     }
   }
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "contracts" {
+  bucket = aws_s3_bucket.contracts.id
+
+  rule {
+    id     = "clean-up-old-versions"
+    status = "Enabled"
+
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = 90
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+
+  depends_on = [aws_s3_bucket_versioning.contracts]
 }
 
 resource "aws_s3_bucket_policy" "contracts" {
@@ -349,6 +383,7 @@ resource "aws_db_instance" "db" {
   storage_encrypted           = "true"
   db_name                     = "contracts"
   username                    = "postgres"
+  copy_tags_to_snapshot       = true
   manage_master_user_password = true
   db_subnet_group_name        = aws_db_subnet_group.db.name
   vpc_security_group_ids      = [aws_security_group.db.id]

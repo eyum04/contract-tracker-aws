@@ -28,6 +28,10 @@ jobs:
       - run: terraform fmt -check
       - run: terraform init
       - run: terraform validate
+      - uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: terraform
+          soft_fail: true
       - run: terraform plan
 
 
