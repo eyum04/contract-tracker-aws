@@ -693,3 +693,25 @@ Terraform is basically an instruction booklet for AWS. Instead of clicking throu
 - After I saved the block and ran `init -migrate-state` again, it asked to copy my existing state to the new backend. I said yes. The file showed up in the bucket and `plan` still said "No changes."
 - Lesson: "success" from Terraform doesn't mean it did what I meant. I check the result in the console.
 - `backend.tf` is safe to commit. It only has the bucket name and region, no keys. `terraform.tfstate` stays out of git.
+
+
+## GitHub Actions pipeline with OIDC (no stored AWS keys)
+
+**What I built:** A GitHub Actions workflow that runs on every pull request and on every push to main. It logs into AWS and runs terraform fmt -check, init, validate and plan. It only plans. It can't create or delete anything.
+
+**How the login works:** I didn't put any AWS keys in GitHub. I made an OIDC identity provider in AWS and an IAM role called ct-tf-github-actions. When the workflow runs, GitHub hands it a short-lived token with a name tag on it (the "sub"). AWS checks the tag against the role's trust policy and only lets the robot in if it matches my repo. The role ARN is stored as a GitHub secret called AWS_ROLE_ARN. The ARN isn't a password, but I still keep it out of the code.
+
+**Permissions for the robot:** ReadOnlyAccess so plan can look at everything, plus a small extra policy for the state bucket: list the bucket, read the state file, and write only the lock file. I picked plan-only on purpose so a bad pull request can't wreck my account.
+
+**Mistakes I made (a lot of them):**
+- IAM policy: forgot a closing quote, added an extra s3:PutObject, and named the lock file .tfstate-lock instead of .tflock.
+- Wrote stringLike with a lowercase s. AWS is case sensitive on condition names, so it has to be StringLike.
+- Made terraform.yml in .github/ instead of .github/workflows/, and it was empty until I saved it.
+- YAML typos: checkpit instead of checkout, a missing space in "- uses:", a missing step, and bad indentation. YAML needs spaces, not Tab.
+- Ran git commands from the terraform folder, and typed terrafor.yml.
+
+**The big bug:** The robot kept failing with "Not authorized to perform sts:AssumeRoleWithWebIdentity." My trust policy looked right, the AWS role matched my file, and terraform plan said no changes. So I added a temporary step to the workflow that prints the real sub from the token. It showed that GitHub now puts numeric IDs for the account and the repo in the sub, so it wasn't the old repo:name/repo:pull_request format that every tutorial shows. My trust policy was written for the old format, so they never matched. I updated the trust policy to the new format, ran terraform apply, and the run went green. Then I deleted the debug step.
+
+**What I learned:** When AWS says "not authorized," don't keep re-reading the config. Print the real thing the other side is sending and compare it. Also, a pull request that turns red then green shows the whole fix history.
+
+**State of things:** Pipeline is merged into main and green (run #6). The stack is off (stack_up false), so nothing is costing money.
