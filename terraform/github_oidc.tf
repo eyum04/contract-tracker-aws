@@ -21,7 +21,7 @@ resource "aws_iam_role" "github_actions" {
             "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
           }
           StringLike = {
-            "token.actions.githubusercontent.com:sub" = ["repo:eyum04/contract-tracker-aws:pull_request", "repo:eyum04/contract-tracker-aws:ref:refs/heads/main", ]
+            "token.actions.githubusercontent.com:sub" = ["repo:eyum04@178221415/contract-tracker-aws@1418336412:pull_request", "repo:eyum04@178221415/contract-tracker-aws@1418336412:ref:refs/heads/main"]
           }
         }
       }
