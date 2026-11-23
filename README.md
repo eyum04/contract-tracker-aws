@@ -100,6 +100,19 @@ Every pull request, and every push to `main`, runs a workflow (`.github/workflow
 
 **The bug that took the longest.** The login kept failing with "Not authorized to perform sts:AssumeRoleWithWebIdentity" even though my trust policy matched every tutorial. I printed the token's real `sub` claim and found that GitHub now puts numeric account and repo IDs in it, so the old format never matched. The full story is in `docs/notes.md`.
 
+## Security scan (Checkov)
+
+The pipeline also runs Checkov on the Terraform. For now it's report-only, so it lists findings but doesn't fail the build. I fixed the cheap ones (descriptions on every security group rule, tags copied to database snapshots, the default security group locked down, and an S3 lifecycle rule). It's now 108 passed and 11 failed, and I left those 11 on purpose:
+
+| Checks | What they flag | Why I left them |
+|---|---|---|
+| CKV_AWS_260, CKV_AWS_103, CKV_AWS_378, CKV2_AWS_20 | HTTP only: port 80 open to the internet, no TLS 1.2, no HTTP to HTTPS redirect, plain HTTP to the app | The app is HTTP only for now. HTTPS with ACM and a custom domain is on the roadmap and fixes all four. Port 80 has to be open to the world for a public website. |
+| CKV2_AWS_28 | No WAF in front of the load balancer | A WAF adds a monthly cost that doesn't fit a learning budget. |
+| CKV_AWS_144 | No S3 cross-region replication | It doubles the storage cost for test contracts. |
+| CKV_AWS_145 | S3 uses SSE-S3 instead of a KMS key | The bucket is still encrypted. A KMS key adds cost and setup. |
+| CKV2_AWS_62 | No S3 event notifications | Nothing in the app needs them. |
+| CKV2_AWS_11, CKV2_AWS_30, CKV_AWS_18 | No VPC flow logs, database query logging or S3 access logging | Good extras for later. Each one adds cost and more pieces to manage. |
+
 ## Cost control
 
 The whole stack costs about **$0.12 per hour** while running (ALB, NAT gateway, 2 x t3.micro, RDS). I run it in sessions and shut it down after each one: ASG to 0, delete the NAT gateway and release its Elastic IP, delete the ALB, stop the database, then verify nothing is left. In the Terraform version, a `stack_up` switch controls the hourly pieces (NAT gateway, ALB, database): with it off they don't exist, and one `apply` with it on brings the whole app up.
