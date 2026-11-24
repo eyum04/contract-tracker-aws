@@ -766,3 +766,20 @@ Terraform is basically an instruction booklet for AWS. Instead of clicking throu
 - Detaching a managed policy only removes it from that role. It doesn't delete the AWS policy that my Terraform role also uses.
 
 **Check at the end:** terraform plan said no changes, so I didn't delete anything the Terraform build needs.
+
+
+## Making the repo public
+
+**What I did:** Before making the repo public I went through it for anything sensitive, because everyone can see every file and every old commit once it's public.
+
+**What I checked:**
+- Searched all the tracked files for 12-digit numbers (account IDs), arn:aws, access key prefixes like AKIA, the word password, and database or load balancer addresses. The only 12-digit hits were pieces of the hashes in the Terraform lock file, which is normal. The ARNs were AWS-managed policies and S3 bucket ARNs, which don't have an account ID in them.
+- Searched the whole git history the same way, not only the current files, because deleted stuff is still stored in old commits. Nothing came up.
+- Checked that no state files, key files, or .env files are tracked.
+- Looked at every screenshot by eye, since a search can't read pictures. Console screenshots are where account IDs usually slip through. All clean.
+
+**Settings I changed:** Added a description and topics to the repo. Set Actions so outside contributors need approval before a workflow runs on their pull request. My pipeline can log into AWS, so I didn't want a stranger's pull request to be able to start it. The role is plan-only and only trusts my repo, so this is a second lock.
+
+**Mistake:** I pasted one of my notes blocks into the bottom of the README instead of docs/notes.md, so build-log text was showing on the front page. I noticed it when I looked at the page the way a stranger would, and I moved it.
+
+**Lesson:** Look at the public page in a private window before you share the link.
