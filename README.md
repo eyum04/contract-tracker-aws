@@ -169,29 +169,3 @@ The whole stack costs about **$0.12 per hour** while running (ALB, NAT gateway, 
     ├── notes.md              # build log: what I did, predictions, mistakes, lessons
     └── screenshots/
 ```
-
-## README refresh and Checkov security scan
-
-**README:** My README was still saying Terraform and CI/CD were "next." I updated the status line, fixed the cost section, and added a Terraform section, a CI/CD section, a new roadmap checklist and the new repo layout. I did it on a branch and merged it with a pull request like the pipeline.
-
-**Checkov:** I added a Checkov step to the pipeline. It reads the Terraform and flags risky settings before anything gets built. I set soft_fail: true so it reports findings but doesn't fail the run. I wanted to read them first before deciding what to fix.
-
-**What I learned about the results:**
-- The first run showed 10 errors in the annotations box, and I thought that was the total. It wasn't. GitHub only shows the first 10 annotations. The real total is in the step log: 105 passed, 13 failed.
-- I thought I had to add descriptions to my security groups, but the groups already had them. The ones missing were the individual rules, and those can be changed in place.
-- After I fixed six things, the 10 shown looked the same size, but they were different ones because hidden ones moved up.
-
-**What I fixed:**
-- Added a description to the 5 security group rules.
-- Turned on copy_tags_to_snapshot for the database.
-- Locked down the VPC's default security group with an aws_default_security_group that has no rules in it.
-- Added an S3 lifecycle rule that deletes old versions after 90 days and cleans up half-finished uploads. It doesn't touch the current contract files.
-
-**What I left on purpose (11):** The app is HTTP only for now, so four checks about TLS, HTTPS redirect and open port 80 will stay until I add HTTPS with ACM. A WAF, S3 cross-region replication and a KMS key all cost extra money and are too much for a learning budget. The rest are extras like VPC flow logs and access logging that I want to do later. I put the whole list in a table in the README with the reason for each one.
-
-**Mistakes:**
-- Pasted "> **Status:**" twice at the top of the README.
-- Left out soft_fail: true the first time, so findings would have turned the run red.
-- Ran git add with the wrong path, and from the wrong folder again.
-
-**Result:** 108 passed, 11 failed (all explained). Ran terraform apply for the new changes, then terraform plan said no changes. The stack is still off (stack_up false).
