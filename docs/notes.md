@@ -715,3 +715,26 @@ Terraform is basically an instruction booklet for AWS. Instead of clicking throu
 **What I learned:** When AWS says "not authorized," don't keep re-reading the config. Print the real thing the other side is sending and compare it. Also, a pull request that turns red then green shows the whole fix history.
 
 **State of things:** Pipeline is merged into main and green (run #6). The stack is off (stack_up false), so nothing is costing money.
+
+
+## Phase 7: cleaning up the old console build
+
+**What I did:** Deleted everything I built by hand in the console before the Terraform rebuild, so the account only has the Terraform version left.
+
+**How I did it:** I listed everything first with read-only aws commands before deleting anything. Nothing was costing money by the hour (no NAT gateway, no load balancer, no database, 0 Elastic IPs, no snapshots or secrets). The old stuff was the ASG ct-asg at 0 servers, the launch template, the target group ct-tg, the old S3 bucket, the old VPC ct-vpc, and the old IAM role ct-app-role. The Terraform stuff all starts with ct-tf-, which made it easy to tell apart.
+
+**The order matters.** Things that depend on other things have to go first:
+1. Auto Scaling group, then the launch template it used
+2. Target group
+3. The old database subnet group (it was holding on to the old VPC's subnets, so the VPC delete would have failed)
+4. The VPC itself, in the console, which removes the subnets, route tables, internet gateway, S3 endpoint and security groups for me
+5. The S3 bucket (it has versioning on, so it has to be emptied first, including old versions)
+6. The IAM role, layer by layer: take it out of the instance profile, delete the profile, delete the inline policy, detach the AWS-managed policy, then delete the role
+
+**Things I was careful about:**
+- Matched the VPC ID in the terminal with the one in the console before deleting.
+- Left the unnamed default VPC alone, because AWS makes it for every account.
+- Never touched ct-tfstate-eyoel-2838. If the state bucket goes, Terraform forgets everything it built.
+- Detaching a managed policy only removes it from that role. It doesn't delete the AWS policy that my Terraform role also uses.
+
+**Check at the end:** terraform plan said no changes, so I didn't delete anything the Terraform build needs.
